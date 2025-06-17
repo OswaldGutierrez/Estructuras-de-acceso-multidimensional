@@ -2,12 +2,16 @@
 
 import streamlit as st
 from kdTree import ArbolKD
-from quadTree import QuadTree, Rectangle
-from gridFile import GridFile # Importa la clase GridFile
+from quadTree import QuadTree, Rectangle as QTRectangle # Renombrar para evitar conflicto con RTree.Rectangle
+from gridFile import GridFile
+from rTree import RTree, Rectangle as RTRectangle # Importa RTree y su Rectangle, renombrado para evitar conflicto
+
 # Importaciones de visualizadores separados
 from visualizadorKdTree import graficarPuntos as graficarPuntosKd, graficarConsulta as graficarConsultaKd
 from visualizadorQuadTree import graficarConQuadTree, graficarConsultaQuadTree
-from visualizadorGridFile import graficarConGridFile, graficarConsultaGridFile # Importa las funciones de visualización para GridFile
+from visualizadorGridFile import graficarConGridFile, graficarConsultaGridFile
+from visualizadorRTree import graficarConRTree, graficarConsultaRTree # Importa las funciones de visualización para R-Tree
+
 from utils import generarPuntosAleatorios, esPuntoValido
 
 # Inicializa el estado de sesión
@@ -15,6 +19,7 @@ if 'puntos' not in st.session_state:
     st.session_state.puntos = []
 if 'estructura' not in st.session_state:
     st.session_state.estructura = "KD-Tree"
+
 # Nuevos estados para la configuración del Grid File
 if 'grid_size_x' not in st.session_state:
     st.session_state.grid_size_x = 5
@@ -23,6 +28,11 @@ if 'grid_size_y' not in st.session_state:
 if 'bucket_capacity' not in st.session_state:
     st.session_state.bucket_capacity = 4
 
+# Nuevos estados para la configuración del R-Tree
+if 'rtree_max_entries' not in st.session_state:
+    st.session_state.rtree_max_entries = 4 # M
+if 'rtree_min_entries' not in st.session_state:
+    st.session_state.rtree_min_entries = 2 # m
 
 # Título principal
 st.title("Visualizador de Estructuras de Datos Espaciales")
@@ -32,18 +42,26 @@ st.markdown("---")
 st.subheader("1. Elige la estructura de datos")
 st.session_state.estructura = st.radio(
     "Selecciona la estructura a utilizar:",
-    ("KD-Tree", "Quadtree", "Grid File"), # Asegúrate de que "Grid File" esté aquí
+    ("KD-Tree", "Quadtree", "Grid File", "R-Tree"), # ¡Añade "R-Tree" aquí!
     horizontal=True,
     key="selector_estructura"
 )
 st.markdown("---")
 
-# Mover la configuración del Grid File a la barra lateral, ligada a la selección de estructura
-if st.session_state.estructura == "Grid File":
-    st.sidebar.header("Configuración de Grid File")
-    st.session_state.grid_size_x = st.sidebar.slider("Celdas X (Grid)", 2, 20, st.session_state.grid_size_x, key="grid_x_global_slider")
-    st.session_state.grid_size_y = st.sidebar.slider("Celdas Y (Grid)", 2, 20, st.session_state.grid_size_y, key="grid_y_global_slider")
-    st.session_state.bucket_capacity = st.sidebar.slider("Capacidad Bucket (Grid)", 1, 10, st.session_state.bucket_capacity, key="grid_bucket_global_slider")
+# Mover la configuración de Grid File y R-Tree a la barra lateral, ligada a la selección de estructura
+with st.sidebar:
+    st.header("Configuración de Estructuras")
+    if st.session_state.estructura == "Grid File":
+        st.subheader("Grid File")
+        st.session_state.grid_size_x = st.slider("Celdas X (Grid)", 2, 20, st.session_state.grid_size_x, key="grid_x_global_slider")
+        st.session_state.grid_size_y = st.slider("Celdas Y (Grid)", 2, 20, st.session_state.grid_size_y, key="grid_y_global_slider")
+        st.session_state.bucket_capacity = st.slider("Capacidad Bucket (Grid)", 1, 10, st.session_state.bucket_capacity, key="grid_bucket_global_slider")
+    elif st.session_state.estructura == "R-Tree":
+        st.subheader("R-Tree")
+        st.session_state.rtree_max_entries = st.slider("Máx. Entradas/Nodo (M)", 2, 10, st.session_state.rtree_max_entries, key="rtree_max_entries_slider")
+        # Asegurarse que min_entries <= max_entries / 2
+        max_m_val = max(1, st.session_state.rtree_max_entries // 2)
+        st.session_state.rtree_min_entries = st.slider("Mín. Entradas/Nodo (m)", 1, max_m_val, st.session_state.rtree_min_entries, key="rtree_min_entries_slider")
 
 
 # ======================== SECCIÓN: AGREGAR PUNTOS ========================
@@ -95,7 +113,7 @@ else:
 
 # Dibuja el gráfico según la estructura seleccionada
 if st.session_state.estructura == "Quadtree" and st.session_state.puntos:
-    boundary = Rectangle(limX / 2, limY / 2, limX / 2, limY / 2)
+    boundary = QTRectangle(limX / 2, limY / 2, limX / 2, limY / 2) # Usar QTRectangle
     qtree = QuadTree(boundary, 4)
     for p in st.session_state.puntos:
         qtree.insertar(p)
@@ -106,6 +124,11 @@ elif st.session_state.estructura == "Grid File" and st.session_state.puntos:
     for p in st.session_state.puntos:
         grid_file.insertar(p) # Los puntos que no caben no se insertan
     fig = graficarConGridFile(st.session_state.puntos, grid_file, xMax=limX, yMax=limY)
+elif st.session_state.estructura == "R-Tree" and st.session_state.puntos: # Lógica para R-Tree
+    rtree = RTree(max_entries=st.session_state.rtree_max_entries, min_entries=st.session_state.rtree_min_entries)
+    for p in st.session_state.puntos:
+        rtree.insertar(p)
+    fig = graficarConRTree(st.session_state.puntos, rtree, xMax=limX, yMax=limY)
 else: # KD-Tree o no hay puntos
     fig = graficarPuntosKd(st.session_state.puntos, xMax=limX, yMax=limY)
 
@@ -168,7 +191,7 @@ if st.session_state.puntos:
 
     # -------- Lógica para Quadtree --------
     elif st.session_state.estructura == "Quadtree":
-        boundary = Rectangle(limX / 2, limY / 2, limX / 2, limY / 2)
+        boundary = QTRectangle(limX / 2, limY / 2, limX / 2, limY / 2) # Usar QTRectangle
         qtree = QuadTree(boundary, 4)
         for p in st.session_state.puntos:
             qtree.insertar(p)
@@ -198,7 +221,8 @@ if st.session_state.puntos:
                 yMin = st.number_input("Y Min", value=2.0, step=0.5, key="rangoYmin_qt")
                 alto = st.number_input("Alto", value=6.0, step=0.5, key="rangoH_qt")
             if st.button("Buscar en rango", key="btn_rango_qt"):
-                rango_rect = Rectangle(xMin + ancho / 2, yMin + alto / 2, ancho / 2, alto / 2)
+                # Para Quadtree, creamos un Rectangle a partir de (centro_x, centro_y, half_width, half_height)
+                rango_rect = QTRectangle(xMin + ancho / 2, yMin + alto / 2, ancho / 2, alto / 2)
                 resultados = qtree.buscarEnRango(rango_rect)
                 fig = graficarConsultaQuadTree(st.session_state.puntos, qtree, puntosResultado=resultados, rect=rango_rect, xMax=limX, yMax=limY)
                 st.pyplot(fig)
@@ -267,6 +291,70 @@ if st.session_state.puntos:
                 st.pyplot(fig)
                 st.success(f"Vecino más cercano: {vecino}" if vecino else "No hay puntos en el Grid File.")
 
+    # -------- Lógica para R-Tree --------
+    elif st.session_state.estructura == "R-Tree":
+        rtree = RTree(max_entries=st.session_state.rtree_max_entries, min_entries=st.session_state.rtree_min_entries)
+        for p in st.session_state.puntos:
+            rtree.insertar(p)
+
+        tipoConsulta = st.selectbox("Selecciona tipo de consulta", ["Consulta puntual", "Consulta por rango", "Vecino más cercano"], key="rt_consulta")
+
+        if tipoConsulta == "Consulta puntual":
+            #st.info("La consulta puntual en R-Tree busca si un MBR hoja contiene el punto. No es un 'punto exacto' como en KD-Tree, es más bien '¿este punto caería en un MBR que ya contiene ese punto?'.")
+            colx, coly = st.columns(2)
+            with colx:
+                x = st.number_input("X", key="busqX_rt", step=0.5)
+            with coly:
+                y = st.number_input("Y", key="busqY_rt", step=0.5)
+            if st.button("Buscar punto exacto (aproximado en R-Tree)", key="btn_punto_rt"):
+                punto_a_buscar = (x, y)
+                # La búsqueda puntual en R-Tree no es directa. Podemos simularla buscando en un rango muy pequeño
+                # o iterando a través de los puntos que se insertaron si queremos la semántica de "exacto".
+                # Para mantener la coherencia con otros árboles, implementaremos una búsqueda de "contiene"
+                # en el R-Tree. Si la entrada de un punto se encontró, entonces "está".
+                
+                # Una forma de "buscar punto exacto" en R-Tree es buscarlo después de la inserción.
+                # Como insertamos todos los puntos antes de la consulta, podemos simplemente buscar
+                # en la lista de puntos si el punto existe. Esto no usa el R-Tree para la búsqueda exacta.
+                # Si realmente quieres usar el R-Tree para verificar la existencia, tendrías que modificar
+                # la clase RTree para una función `buscarPunto(point)`.
+                
+                # Por ahora, una simulación simple, si el punto existe en la lista original:
+                encontrado = punto_a_buscar in st.session_state.puntos
+                resultado = [punto_a_buscar] if encontrado else []
+                fig = graficarConsultaRTree(st.session_state.puntos, rtree, puntosResultado=resultado, puntoConsulta=punto_a_buscar, xMax=limX, yMax=limY)
+                st.pyplot(fig)
+                st.success("Punto encontrado." if encontrado else "Punto no encontrado.")
+
+        elif tipoConsulta == "Consulta por rango":
+            col1, col2 = st.columns(2)
+            with col1:
+                xMin = st.number_input("X Min", value=2.0, step=0.5, key="rangoXmin_rt")
+                xMax = st.number_input("X Max", value=8.0, step=0.5, key="rangoXmax_rt")
+            with col2:
+                yMin = st.number_input("Y Min", value=2.0, step=0.5, key="rangoYmin_rt")
+                yMax = st.number_input("Y Max", value=8.0, step=0.5, key="rangoYmax_rt")
+            if st.button("Buscar en rango", key="btn_rango_rt"):
+                # Para R-Tree, la consulta por rango usa su propia clase Rectangle
+                query_rect = RTRectangle(xMin, yMin, xMax, yMax)
+                resultados = rtree.buscarEnRango(query_rect)
+                fig = graficarConsultaRTree(st.session_state.puntos, rtree, puntosResultado=resultados, rect=query_rect, xMax=limX, yMax=limY)
+                st.pyplot(fig)
+                st.success(f"{len(resultados)} punto(s) en el rango.")
+
+        elif tipoConsulta == "Vecino más cercano":
+            colx, coly = st.columns(2)
+            with colx:
+                x = st.number_input("X consulta", key="nnX_rt", step=0.5)
+            with coly:
+                y = st.number_input("Y consulta", key="nnY_rt", step=0.5)
+            if st.button("Buscar vecino más cercano", key="btn_nn_rt"):
+                puntoRef = (x, y)
+                vecino = rtree.buscarVecinoMasCercano(puntoRef)
+                fig = graficarConsultaRTree(st.session_state.puntos, rtree, puntoConsulta=puntoRef, vecinoCercano=vecino, xMax=limX, yMax=limY)
+                st.pyplot(fig)
+                st.success(f"Vecino más cercano: {vecino}" if vecino else "No hay puntos en el R-Tree.")
+
 
 # ======================== BOTÓN: LIMPIAR ========================
 st.markdown("---")
@@ -276,4 +364,7 @@ if st.button("Limpiar todo"):
     st.session_state.grid_size_x = 5
     st.session_state.grid_size_y = 5
     st.session_state.bucket_capacity = 4
+    # Restablecer los valores por defecto del R-Tree al limpiar todo
+    st.session_state.rtree_max_entries = 4
+    st.session_state.rtree_min_entries = 2
     st.rerun()
