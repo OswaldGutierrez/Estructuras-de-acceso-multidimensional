@@ -64,6 +64,9 @@ class ArbolKD:
 
         eje = profundidad % 2
 
+        # Este método de búsqueda en rango es correcto, pero se puede optimizar
+        # para podar ramas que no se intersectan con el rectángulo de búsqueda.
+        # Por ahora lo dejamos como estaba para no introducir más cambios.
         if eje == 0:  # Comparar en X
             if nodo.punto[0] >= xMin:
                 self._buscarEnRangoRecursivo(nodo.izquierdo, xMin, xMax, yMin, yMax, profundidad + 1, resultado)
@@ -75,13 +78,18 @@ class ArbolKD:
             if nodo.punto[1] <= yMax:
                 self._buscarEnRangoRecursivo(nodo.derecho, xMin, xMax, yMin, yMax, profundidad + 1, resultado)
 
+    # ================== SECCIÓN CORREGIDA ==================
+
     # Consulta de vecino más cercano
     def buscarVecinoMasCercano(self, puntoObjetivo):
-        return self._buscarNN(self.raiz, puntoObjetivo, 0, None, float('inf'))
+        # CORRECCIÓN: La llamada inicial ahora espera una tupla (nodo, distancia)
+        mejorNodo, _ = self._buscarNN(self.raiz, puntoObjetivo, 0, None, float('inf'))
+        return mejorNodo
 
     def _buscarNN(self, nodo, puntoObjetivo, profundidad, mejorNodo, mejorDistancia):
         if nodo is None:
-            return mejorNodo
+            # CORRECCIÓN: Devuelve la tupla completa
+            return mejorNodo, mejorDistancia
 
         distancia = math.dist(nodo.punto, puntoObjetivo)
         if distancia < mejorDistancia:
@@ -90,7 +98,6 @@ class ArbolKD:
 
         eje = profundidad % 2
 
-        # Elegir el subárbol relevante
         if puntoObjetivo[eje] < nodo.punto[eje]:
             siguiente = nodo.izquierdo
             otro = nodo.derecho
@@ -98,10 +105,13 @@ class ArbolKD:
             siguiente = nodo.derecho
             otro = nodo.izquierdo
 
-        mejorNodo = self._buscarNN(siguiente, puntoObjetivo, profundidad + 1, mejorNodo, mejorDistancia)
+        # CORRECCIÓN: Actualiza mejorNodo y mejorDistancia con el resultado de la recursión
+        mejorNodo, mejorDistancia = self._buscarNN(siguiente, puntoObjetivo, profundidad + 1, mejorNodo, mejorDistancia)
 
-        # Verificar si es necesario revisar el otro subárbol
+        # CORRECCIÓN: Esta comprobación ahora usa la `mejorDistancia` actualizada
         if abs(puntoObjetivo[eje] - nodo.punto[eje]) < mejorDistancia:
-            mejorNodo = self._buscarNN(otro, puntoObjetivo, profundidad + 1, mejorNodo, mejorDistancia)
+            # CORRECCIÓN: Actualiza de nuevo al explorar la otra rama
+            mejorNodo, mejorDistancia = self._buscarNN(otro, puntoObjetivo, profundidad + 1, mejorNodo, mejorDistancia)
 
-        return mejorNodo
+        # CORRECCIÓN: Devuelve siempre la tupla (nodo, distancia)
+        return mejorNodo, mejorDistancia

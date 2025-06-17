@@ -2,21 +2,37 @@
 
 import streamlit as st
 from kdTree import ArbolKD
-from visualizador import graficarConsulta, graficarPuntos
+from quadTree import QuadTree, Rectangle
+# Importaciones de visualizadores separados
+from visualizadorKdTree import graficarPuntos as graficarPuntosKd, graficarConsulta as graficarConsultaKd
+from visualizadorQuadTree import graficarConQuadTree, graficarConsultaQuadTree
 from utils import generarPuntosAleatorios, esPuntoValido
 
-# Inicializa el estado de sesión para los puntos si aún no existe
+# Inicializa el estado de sesión
 if 'puntos' not in st.session_state:
     st.session_state.puntos = []
+if 'estructura' not in st.session_state:
+    st.session_state.estructura = "KD-Tree"
 
 # Título principal
-st.title("Visualización de KD-Tree")
+st.title("Visualizador de Estructuras de Datos Espaciales")
+st.markdown("---")
+
+# ======================== SECCIÓN: SELECCIÓN DE ESTRUCTURA ========================
+st.subheader("1. Elige la estructura de datos")
+st.session_state.estructura = st.radio(
+    "Selecciona la estructura a utilizar:",
+    ("KD-Tree", "Quadtree"),
+    horizontal=True,
+    key="selector_estructura"
+)
 st.markdown("---")
 
 # ======================== SECCIÓN: AGREGAR PUNTOS ========================
 
-st.subheader("Agregar puntos")
+st.subheader("2. Agrega o genera puntos")
 
+# ... (El código para agregar puntos manual y aleatoriamente no cambia) ...
 # ----------- Agregar punto manualmente -----------
 col1, col2, col3 = st.columns([1, 1, 1.5])
 with col1:
@@ -24,114 +40,167 @@ with col1:
 with col2:
     yManual = st.number_input("Coordenada Y", key="yManual", value=0.0, step=0.5)
 with col3:
-    if st.button("Agregar punto manual"):
-        nuevo = (round(xManual, 1), round(yManual, 1))  # Asegura 1 decimal
+    st.write("") # Espaciador
+    st.write("") # Espaciador
+    if st.button("Agregar punto"):
+        nuevo = (round(xManual, 1), round(yManual, 1))
         if esPuntoValido(nuevo):
             st.session_state.puntos.append(nuevo)
             st.success(f"Agregado punto {nuevo}")
-            st.rerun()  # Redibuja el gráfico automáticamente
+            st.rerun()
 
 # ----------- Generar puntos aleatorios -----------
 col4, col5 = st.columns([3, 1])
 with col4:
-    cantidad = st.slider("Generar puntos aleatorios", 1, 20, 5)
+    cantidad = st.slider("Cantidad de puntos a generar:", 1, 50, 5)
 with col5:
-    if st.button("Generar aleatorios"):
+    st.write("") # Espaciador
+    st.write("") # Espaciador
+    if st.button("Generar"):
         nuevos = generarPuntosAleatorios(cantidad, 0, 20, 0, 20)
         st.session_state.puntos.extend(nuevos)
         st.success(f"{cantidad} puntos generados")
-        st.rerun()  # Redibuja el gráfico automáticamente
-
+        st.rerun()
 st.markdown("---")
+
 
 # ======================== SECCIÓN: GRÁFICO DINÁMICO ========================
 
-st.subheader("Gráfico de puntos")
+st.subheader("3. Visualización del espacio y la estructura")
 
 if st.session_state.puntos:
     maxX = max(p[0] for p in st.session_state.puntos)
     maxY = max(p[1] for p in st.session_state.puntos)
-    limX = max(10, int(maxX + 1))
-    limY = max(10, int(maxY + 1))
+    limX = max(10, int(maxX + 5))
+    limY = max(10, int(maxY + 5))
 else:
     limX = limY = 10
 
-fig = graficarPuntos(st.session_state.puntos, xMax=limX, yMax=limY)
+# Dibuja el gráfico según la estructura seleccionada
+if st.session_state.estructura == "Quadtree" and st.session_state.puntos:
+    boundary = Rectangle(limX / 2, limY / 2, limX / 2, limY / 2)
+    qtree = QuadTree(boundary, 4)
+    for p in st.session_state.puntos:
+        qtree.insertar(p)
+    fig = graficarConQuadTree(st.session_state.puntos, qtree, xMax=limX, yMax=limY)
+else: # KD-Tree o no hay puntos
+    fig = graficarPuntosKd(st.session_state.puntos, xMax=limX, yMax=limY)
+
 st.pyplot(fig)
 
-# ======================== SECCIÓN: CONSULTAS KD-TREE ========================
+# ======================== SECCIÓN: CONSULTAS ========================
 
 if st.session_state.puntos:
     st.markdown("---")
-    st.subheader("Consultas en KD-Tree")
+    st.subheader(f"4. Consultas en {st.session_state.estructura}")
 
-    arbol = ArbolKD()
-    for p in st.session_state.puntos:
-        arbol.insertar(p)
+    # -------- Lógica para KD-Tree --------
+    if st.session_state.estructura == "KD-Tree":
+        arbol = ArbolKD()
+        for p in st.session_state.puntos:
+            arbol.insertar(p)
 
-    tipoConsulta = st.selectbox("Selecciona tipo de consulta", ["Consulta puntual", "Consulta por rango", "Vecino más cercano"])
+        tipoConsulta = st.selectbox("Selecciona tipo de consulta", ["Consulta puntual", "Consulta por rango", "Vecino más cercano"], key="kd_consulta")
 
-    if tipoConsulta == "Consulta puntual":
-        colx, coly = st.columns(2)
-        with colx:
-            x = st.number_input("X", key="busqX", step=0.5)
-        with coly:
-            y = st.number_input("Y", key="busqY", step=0.5)
-        if st.button("Buscar punto exacto"):
-            punto = (x, y)
-            encontrado = arbol.buscarPunto(punto)
-            resultado = [punto] if encontrado else []
-            fig = graficarConsulta(
-                st.session_state.puntos,
-                puntosResultado=resultado,
-                puntoConsulta=punto,
-                xMax=limX,
-                yMax=limY
-            )
-            st.pyplot(fig)
-            st.success("Punto encontrado." if encontrado else "Punto no encontrado.")
+        if tipoConsulta == "Consulta puntual":
+            # ... (código sin cambios, solo la llamada a la función de graficado)
+            colx, coly = st.columns(2)
+            with colx:
+                x = st.number_input("X", key="busqX_kd", step=0.5)
+            with coly:
+                y = st.number_input("Y", key="busqY_kd", step=0.5)
+            if st.button("Buscar punto exacto", key="btn_punto_kd"):
+                punto = (x, y)
+                encontrado = arbol.buscarPunto(punto)
+                resultado = [punto] if encontrado else []
+                fig = graficarConsultaKd(st.session_state.puntos, puntosResultado=resultado, puntoConsulta=punto, xMax=limX, yMax=limY) # <--- CAMBIO AQUÍ
+                st.pyplot(fig)
+                st.success("Punto encontrado." if encontrado else "Punto no encontrado.")
 
-    elif tipoConsulta == "Consulta por rango":
-        col1, col2 = st.columns(2)
-        with col1:
-            xMin = st.number_input("X Min", value=2.0, step=0.5)
-            xMax = st.number_input("X Max", value=8.0, step=0.5)
-        with col2:
-            yMin = st.number_input("Y Min", value=2.0, step=0.5)
-            yMax = st.number_input("Y Max", value=8.0, step=0.5)
-        if st.button("Buscar en rango"):
-            resultados = arbol.buscarEnRango(xMin, xMax, yMin, yMax)
-            fig = graficarConsulta(
-                st.session_state.puntos,
-                puntosResultado=resultados,
-                rect=(xMin, xMax, yMin, yMax),
-                xMax=limX,
-                yMax=limY
-            )
-            st.pyplot(fig)
-            st.success(f"{len(resultados)} punto(s) en el rango.")
+        elif tipoConsulta == "Consulta por rango":
+            # ... (código sin cambios, solo la llamada a la función de graficado)
+            col1, col2 = st.columns(2)
+            with col1:
+                xMin = st.number_input("X Min", value=2.0, step=0.5, key="rangoXmin_kd")
+                xMax = st.number_input("X Max", value=8.0, step=0.5, key="rangoXmax_kd")
+            with col2:
+                yMin = st.number_input("Y Min", value=2.0, step=0.5, key="rangoYmin_kd")
+                yMax = st.number_input("Y Max", value=8.0, step=0.5, key="rangoYmax_kd")
+            if st.button("Buscar en rango", key="btn_rango_kd"):
+                resultados = arbol.buscarEnRango(xMin, xMax, yMin, yMax)
+                fig = graficarConsultaKd(st.session_state.puntos, puntosResultado=resultados, rect=(xMin, xMax, yMin, yMax), xMax=limX, yMax=limY) # <--- CAMBIO AQUÍ
+                st.pyplot(fig)
+                st.success(f"{len(resultados)} punto(s) en el rango.")
 
-    elif tipoConsulta == "Vecino más cercano":
-        colx, coly = st.columns(2)
-        with colx:
-            x = st.number_input("X consulta", key="nnX", step=0.5)
-        with coly:
-            y = st.number_input("Y consulta", key="nnY", step=0.5)
-        if st.button("Buscar vecino más cercano"):
-            puntoRef = (x, y)
-            nodo = arbol.buscarVecinoMasCercano(puntoRef)
-            fig = graficarConsulta(
-                st.session_state.puntos,
-                puntoConsulta=puntoRef,
-                vecinoCercano=nodo.punto if nodo else None,
-                xMax=limX,
-                yMax=limY
-            )
-            st.pyplot(fig)
-            st.success(f"Vecino más cercano: {nodo.punto}" if nodo else "No hay puntos en el árbol.")
+        elif tipoConsulta == "Vecino más cercano":
+            # ... (código sin cambios, solo la llamada a la función de graficado)
+            colx, coly = st.columns(2)
+            with colx:
+                x = st.number_input("X consulta", key="nnX_kd", step=0.5)
+            with coly:
+                y = st.number_input("Y consulta", key="nnY_kd", step=0.5)
+            if st.button("Buscar vecino más cercano", key="btn_nn_kd"):
+                puntoRef = (x, y)
+                nodo = arbol.buscarVecinoMasCercano(puntoRef)
+                fig = graficarConsultaKd(st.session_state.puntos, puntoConsulta=puntoRef, vecinoCercano=nodo.punto if nodo else None, xMax=limX, yMax=limY) # <--- CAMBIO AQUÍ
+                st.pyplot(fig)
+                st.success(f"Vecino más cercano: {nodo.punto}" if nodo else "No hay puntos en el árbol.")
+
+    # -------- Lógica para Quadtree --------
+    elif st.session_state.estructura == "Quadtree":
+        boundary = Rectangle(limX / 2, limY / 2, limX / 2, limY / 2)
+        qtree = QuadTree(boundary, 4)
+        for p in st.session_state.puntos:
+            qtree.insertar(p)
+
+        tipoConsulta = st.selectbox("Selecciona tipo de consulta", ["Consulta puntual", "Consulta por rango", "Vecino más cercano"], key="qt_consulta")
+
+        if tipoConsulta == "Consulta puntual":
+            # ... (código sin cambios, solo la llamada a la función de graficado)
+            colx, coly = st.columns(2)
+            with colx:
+                x = st.number_input("X", key="busqX_qt", step=0.5)
+            with coly:
+                y = st.number_input("Y", key="busqY_qt", step=0.5)
+            if st.button("Buscar punto exacto", key="btn_punto_qt"):
+                punto = (x, y)
+                encontrado = qtree.buscarPunto(punto)
+                resultado = [punto] if encontrado else []
+                fig = graficarConsultaQuadTree(st.session_state.puntos, qtree, puntosResultado=resultado, puntoConsulta=punto, xMax=limX, yMax=limY) # <--- CAMBIO AQUÍ
+                st.pyplot(fig)
+                st.success("Punto encontrado." if encontrado else "Punto no encontrado.")
+
+        elif tipoConsulta == "Consulta por rango":
+            # ... (código sin cambios, solo la llamada a la función de graficado)
+            col1, col2 = st.columns(2)
+            with col1:
+                xMin = st.number_input("X Min", value=2.0, step=0.5, key="rangoXmin_qt")
+                ancho = st.number_input("Ancho", value=6.0, step=0.5, key="rangoW_qt")
+            with col2:
+                yMin = st.number_input("Y Min", value=2.0, step=0.5, key="rangoYmin_qt")
+                alto = st.number_input("Alto", value=6.0, step=0.5, key="rangoH_qt")
+            if st.button("Buscar en rango", key="btn_rango_qt"):
+                rango_rect = Rectangle(xMin + ancho / 2, yMin + alto / 2, ancho / 2, alto / 2)
+                resultados = qtree.buscarEnRango(rango_rect)
+                fig = graficarConsultaQuadTree(st.session_state.puntos, qtree, puntosResultado=resultados, rect=rango_rect, xMax=limX, yMax=limY) # <--- CAMBIO AQUÍ
+                st.pyplot(fig)
+                st.success(f"{len(resultados)} punto(s) en el rango.")
+
+        elif tipoConsulta == "Vecino más cercano":
+            # ... (código sin cambios, solo la llamada a la función de graficado)
+            colx, coly = st.columns(2)
+            with colx:
+                x = st.number_input("X consulta", key="nnX_qt", step=0.5)
+            with coly:
+                y = st.number_input("Y consulta", key="nnY_qt", step=0.5)
+            if st.button("Buscar vecino más cercano", key="btn_nn_qt"):
+                puntoRef = (x, y)
+                vecino, _ = qtree.buscarVecinoMasCercano(puntoRef)
+                fig = graficarConsultaQuadTree(st.session_state.puntos, qtree, puntoConsulta=puntoRef, vecinoCercano=vecino, xMax=limX, yMax=limY) # <--- CAMBIO AQUÍ
+                st.pyplot(fig)
+                st.success(f"Vecino más cercano: {vecino}" if vecino else "No hay puntos en el árbol.")
 
 # ======================== BOTÓN: LIMPIAR ========================
-
 st.markdown("---")
 if st.button("Limpiar todo"):
     st.session_state.puntos = []
